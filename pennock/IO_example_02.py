@@ -5,6 +5,7 @@ Created on Fri Dec 06 09:12 2019 - ish
 """
 import sys
 import os
+import math
 
 def find_int(string_to_search,name,noisy):
     """
@@ -78,7 +79,7 @@ def find_float(string_to_search,name,noisy):
         if (qqe>-1):   # equals found
             idx=qqe+1  # point at character after equals sign
             valstring=new_str[idx:]
-            substring=valstring.split(';') #variables need to be separated by semicolon
+            substring=valstring.split(' ') #variables need to be separated by semicolon
             teststring=substring[0].strip() # strip gets rid of spare spaces
             try:
                 rtn=float(teststring)  #convert string to integer
@@ -87,7 +88,7 @@ def find_float(string_to_search,name,noisy):
                 ok=True
             except ValueError:
                 n3, n3_found=find_string(line,"Node1",True) # look for Node1 in line with extra output
-                n4, n4_found=find_string(line,"Node2",False
+                n4, n4_found=find_string(line,"Node2",False)
                 if noisy:
                     print('ERROR:\nTried to find float <%s> in string <%s>, valstring is <%s>, teststring is <%s>'%(name,string_to_search,valstring,teststring))
                 rtn=-987654321
@@ -144,7 +145,8 @@ def find_string(string_to_search,name,noisy):
     return(rtn, ok)
 #
 # main program
-    
+block=["VT=5 RS=50","RL=75","Fstart=10.0 Fend=10e+6 Nfreqs=10"]
+"""    
 print("This is the name of the script: ", sys.argv[0])
 print("Number of arguments: ", len(sys.argv))
 print("The arguments are: " , str(sys.argv))
@@ -164,20 +166,22 @@ except FileNotFoundError:
     sys.exit(1)  # exits the program, returning a value of 1 to the operating system 
 #now interpret file
 file_lines=fin.readlines()
+"""
+file_lines=block
 for index,line in enumerate(file_lines):
     print("Line[%d] =<%s>"%(index,line))
-    n1, n1_found=find_int(line,"Node1",True) # look for Node1 in line with extra output
-    n2, n2_found=find_int(line,"Node2",False) # look for Node2 in line with less output
-    n3, n3_found=find_float(line,"Node1",True) # look for Node1 in line with extra output
-    n4, n4_found=find_float(line,"Node2",False) # look for Node2 in line with less output
-    happy=n1_found and n2_found and n3_found and n4_found
+    n1, n1_found=find_int(line,"Nfreqs",True) # look for Node1 in line with extra output
+    #n2, n2_found=find_int(line,"Node2",False) # look for Node2 in line with less output
+    n3, n3_found=find_float(line,"Fend",True) # look for Node1 in line with extra output
+    #n4, n4_found=find_float(line,"Node2",False) # look for Node2 in line with less output
+    happy=n1_found and n3_found
     if (not happy):
-        print("Failed to find input in line <%s>\nn1=%d, n1_found=%r, n2=%d, n2_found=%r"%(line,n1,n1_found,n2,n2_found))
+        print("Failed to find input in line <%s>\nn1=%d, n1_found=%r"%(line,n1,n1_found))
     else:
-        print("Found nodes: n1=%d, n2=%d, n3=%d,n4=%d "%(n1,n2,n3,n4))
+        print("Found nodes: n1=%d, n2=%d, n3=%d,n4=%d "%(n1,n3))
 
 #test=input("Enter a value: ")
-fin.close()
+#fin.close()
 
 
 

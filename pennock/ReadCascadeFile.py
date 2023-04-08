@@ -112,6 +112,49 @@ def locateBlocks(cascadeList,blockName):
 
     return block
 
+def getValueFromString(name,type,string):
+    nameFind = string.find(name)
+    if nameFind >-1:
+        lname = len(name)
+        idx = nameFind+lname
+        new_str=string[idx:]
+        eq = new_str.find('=')
+        if (eq >-1):
+            idx=eq+1
+            valstring=new_str[idx:]
+            substring=valstring.split(' ')
+            teststring=substring[0].strip() 
+            if type == 'float':
+                try:
+                    rtn = float(teststring)
+                    error = None 
+                except ValueError:
+                    rtn = None
+                    error = "V001"
+            elif type == 'int':
+                try:
+                    rtn = int(float)
+                    error = None
+                except ValueError:
+                    rtn = None
+                    error = "V002"
+        else:
+            error = "V003"
+            rtn = None
+    else:
+        error = "V004"
+        rtn = None
+    return(rtn,error) 
+            
+            
+
+
+
+
+
+                
+
+
 aval=ReadCascadeFile("a_to_e_Example_net_Input_Files/a_Test_Circuit_1.net")
 
 ablock=locateBlocks(aval.get("cascadeFile"),"CIRCUIT")
