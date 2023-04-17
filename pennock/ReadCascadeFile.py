@@ -1,5 +1,9 @@
 import math
 import numpy
+from   pathlib import Path
+import csv
+import sys
+import time
 
 
 class Circuit:
@@ -41,8 +45,6 @@ class Circuit:
             calcValue=0
         return calcValue
 
-
-
 def ReadCascadeFile(inputFile):
     
     circuitCheck = 0
@@ -55,25 +57,24 @@ def ReadCascadeFile(inputFile):
     returnDict={}
     returnDict.update({"cascadeFile":cascadeFile,"returnState":returnStatus,"errorCodes":errorCodes})
     
-    with open(inputFile,'r') as f:
-        for line in f.readlines():
-            if "#" in line:
-                continue
-            else:
-                if "<CIRCUIT>" in line:
-                    circuitCheck = 1
-                if "</CIRCUIT>" in line:
-                    circuitCheck += 1
-                if "<TERMS>" in line:
-                    termsCheck = 1
-                if "</TERMS>" in line:
-                    termsCheck += 1
-                if "<OUTPUT>" in line:
-                    outputCheck = 1
-                if "</OUTPUT>" in line:
-                    outputCheck += 1
-                line=line.rstrip("\n")
-                cascadeFile.append(line)
+    for line in inputFile.readlines():
+        if "#" in line:
+            continue
+        else:
+            if "<CIRCUIT>" in line:
+                circuitCheck = 1
+            if "</CIRCUIT>" in line:
+                circuitCheck += 1
+            if "<TERMS>" in line:
+                termsCheck = 1
+            if "</TERMS>" in line:
+                termsCheck += 1
+            if "<OUTPUT>" in line:
+                outputCheck = 1
+            if "</OUTPUT>" in line:
+                outputCheck += 1
+            line=line.rstrip("\n")
+            cascadeFile.append(line)
 
     if circuitCheck !=2:
         errorCodes.append("F001")
@@ -189,51 +190,10 @@ def getTerms(termBlock):
 
     return CascadeValue
 
-
-aval=ReadCascadeFile("a_to_e_Example_net_Input_Files/a_Test_Circuit_1.net")
-
-ablock=locateBlocks(aval.get("cascadeFile"),"CIRCUIT")
-bblock=locateBlocks(aval.get("cascadeFile"),"TERMS")
-cblock=locateBlocks(aval.get("cascadeFile"),"OUTPUT")
-theTerms=getTerms(bblock)
-
-
-Fstart = theTerms.get("Fstart")
-Fend = theTerms.get("Fend")
-Nfreqs = theTerms.get("Nfreqs")
-step = int(theTerms.get("Fend")-theTerms.get("Fstart"))/(theTerms.get("Nfreqs")-1)
-
-ablock.sort()
-
-
-
-frequencies = numpy.arange(Fstart,Fend+step,step).tolist()
-impedences = []
-for fq in frequencies:
-    for node in ablock:
-        res = None
-        con = None
-        cap = None
-        ind = None
-        if 'R=' in node:
-            res,error = getValueFromString('R','float',node)
-        elif 'G=' in node:
-            con,error = getValueFromString('G','float',node)
-        elif 'L=' in node:
-            ind,error=getValueFromString('L','float',node)
-        elif 'C='in node:
-            cap,error=getValueFromString('C','float',node)
-        if error == None:
-            n1,nerror = getValueFromString('n1','int',node)
-            n2,nerror = getValueFromString('n2','int',node)
-            if nerror == None:
-                x = Circuit(n1,n2,res,cap,ind,con,fq)
-                impedences.append(x)
-
-
-def ABCDmatrix (start):
+def ABCDmatrix (circuitNodeCount,impedences):
     abcd = []
     abcdCounter=0
+    start=0
 
     if impedences[start].bValue == 0 and impedences[start].cValue == 0:
             print("ERROR: component value missing between node")
@@ -253,9 +213,7 @@ def ABCDmatrix (start):
     abcd.append(numpy.array([[A,B],[C,D]]))
     abcdCounter+=1
 
-    nabcd = []
-
-    for y in range(start+1,len(ablock)+start): 
+    for y in range(start+1,circuitNodeCount+start): 
         if impedences[y].bValue == 0 and impedences[y].cValue == 0:
             print("ERROR: component value missing between node")
         elif impedences[y].bValue != 0 and impedences[y].cValue == 0:
@@ -275,50 +233,198 @@ def ABCDmatrix (start):
         abcd.append( numpy.matmul(abcd[abcdCounter-1],numpy.array([[A,B],[C,D]])))
         abcdCounter+=1
 
-    return (abcd)
+    return abcd[-1] #return last element
 
-cascadeCalc = ABCDmatrix(90)
-abcd = cascadeCalc[9]
-a = abcd[0][0]
-b = abcd[0][1]
-c = abcd[1][0]
-d = abcd[1][1]
+def getLogicalCascadeBlocks(cascadeInputFile):
 
-RL = theTerms.get("RL")
-RS = theTerms.get("RS")
-VT = theTerms.get("VT")
+    aval=ReadCascadeFile(inputFile=cascadeInputFile.open(mode='r'))
+
+    ablock=locateBlocks(aval.get("cascadeFile"),"CIRCUIT")
+    bblock=locateBlocks(aval.get("cascadeFile"),"TERMS")
+    cblock=locateBlocks(aval.get("cascadeFile"),"OUTPUT")
+    theTerms=getTerms(bblock)
+
+    ablock.sort()
+
+    return ablock,cblock,theTerms
+
+def getImpendenceByFrequency(ablock,theTerms):
+
+    Fstart = theTerms.get("Fstart")
+    Fend = theTerms.get("Fend")
+    Nfreqs = theTerms.get("Nfreqs")
+    step = int(theTerms.get("Fend")-theTerms.get("Fstart"))/(theTerms.get("Nfreqs")-1)
+
+    frequencies = numpy.arange(Fstart,Fend+step,step).tolist()
+    impedences = []
+    for fq in frequencies:
+        for node in ablock:
+            res = None
+            con = None
+            cap = None
+            ind = None
+            if 'R=' in node:
+                res,error = getValueFromString('R','float',node)
+            elif 'G=' in node:
+                con,error = getValueFromString('G','float',node)
+            elif 'L=' in node:
+                ind,error=getValueFromString('L','float',node)
+            elif 'C='in node:
+                cap,error=getValueFromString('C','float',node)
+            if error == None:
+                n1,nerror = getValueFromString('n1','int',node)
+                n2,nerror = getValueFromString('n2','int',node)
+                if nerror == None:
+                    x = Circuit(n1,n2,res,cap,ind,con,fq)
+                    impedences.append(x)
+    
+    return impedences
+
+def getCascadeCalc(freq,theTerms,abcd):
+    allCalcs={
+        "Frequency":0,
+        "Vin":0,
+        "Vout":0,
+        "Iin":0,
+        "Iout":0,
+        "Pin":0,
+        "Pout":0,
+        "Zin":0,
+        "Zout":0,
+        "Av":0,
+        "Ai":0
+    }
+
+    allCalcs.update({"Frequency":freq})
+    a = abcd[0][0]
+    b = abcd[0][1]
+    c = abcd[1][0]
+    d = abcd[1][1]
+    
+    RL = theTerms.get("RL")
+    RS = theTerms.get("RS")
+    VT = theTerms.get("VT")
 
 
+    
+    Zout = ((d*RS)+b)/((c*RS)+a)
+    Zin = ((a*RL)+b)/((c*RL)+d)
+    Vin = (Zin/(Zin+RS))*VT
+    Av = RL/((a*RL)+b)
+    Ai = 1/((c*RL)+d)
+    Vout = Av*Vin
+    Iout = Vout/RL
+    Iin = Iout/Ai
+    Pin = Vin*Iout
+    Pout = Vout*Iin
+
+    #add imaginary values with real 
+    #make all values the same length
+
+    allCalcs.update({
+        "Vin":Vin.real,
+        "Vout":Vout.real,
+        "Iin":Iin.real,
+        "Iout":Iout.real,
+        "Pin":Pin.real,
+        "Pout":Pout.real,
+        "Zin":Zin.real,
+        "Zout":Zout.real,
+        "Av":Av.real,
+        "Ai":Ai.real
+    })    
+
+    return allCalcs
+
+def getUnitBasedValue(unit ,value): 
+    if unit==None:
+        return value
+    
+    if unit.startswith("k"):
+        value=value*1000
+    if unit.startswith("p"):
+        value = value*10^-12
+    if unit.startswith("n"):
+        value = value*10^-9
+    if unit.startswith("u"):
+        value = value/1000000
+    if unit.startswith("m"):
+        value = value/1000
+    if unit.startswith("M"):
+        value = value^10^6
+    if unit.startswith("G"):
+        value = value*10^9
+
+    return value
+
+def writeCSV(cascadeOutput):
+
+    hdr=list(cascadeOutput[0].keys())
+
+    with open('test.csv', 'a') as output_file:
+        dict_writer = csv.DictWriter(output_file, restval="-", fieldnames=hdr, delimiter=',')
+        dict_writer.writeheader()
+        dict_writer.writerows(cascadeOutput)
 
 
-
-#Pin = 
-Zout = ((d*RS)+b)/((c*RS)+a)
-#Pout = 
-Zin = ((a*RL)+b)/((c*RL)+d)
-Vin = (Zin/(Zin+RS))*VT
-Av = RL/((a*RL)+b)
-Ai = 1/((c*RL)+d)
-Vout = Av*Vin
-Iout = Vout/RL
-Iin = Iout/Ai
-
-print (Vin)
-print(Vout)
-print(Iin)
-print(Iout)
-
-
-
-
-
+def processCascadeFile(cascadeFile):
+    ablock,cblock,theTerms=getLogicalCascadeBlocks(cascadeFile)
+    impendenceList=getImpendenceByFrequency(ablock,theTerms)
+    circuitNodeCount=len(ablock)
+    
+    cascadeCalculated=[]
+    outputArray=[]
+    
+    for x in range(0,len(impendenceList)-1,circuitNodeCount):
+        singleFrequency=impendenceList[x:x+circuitNodeCount]
         
+        cascadeMatrixCalc=ABCDmatrix(circuitNodeCount,impedences=singleFrequency)
+        freq=singleFrequency[0].frequency
+        cascadeCalculated.append(getCascadeCalc(freq,theTerms,cascadeMatrixCalc))
+
+        outputDict={}
+        outputDict.update({"Frequency Hz":freq})
+        for cblockItem in cblock:
+
+            outputItem=cblockItem.split(' ')
+            calcOutputItem=outputItem[0]
+
+            if len(outputItem)==1:
+                calcUnit=None
+            else:
+                calcUnit=outputItem[1]
+
+            cascadeCalcItem = cascadeCalculated[-1]
+            if calcOutputItem in cascadeCalcItem:
+                outputDict.update({cblockItem: getUnitBasedValue(calcUnit,cascadeCalcItem.get(calcOutputItem))})
+        outputArray.append(outputDict)
+
+        #print(calcOutputItem)
+        #print(calcUnit)
+    writeCSV(outputArray)
+
+if __name__ == '__main__':
+
+    """
+    Check input arguments
+    check file availability for reading
+    report errors
+    output file validity
+    https://builtin.com/software-engineering-perspectives/python-pathlib
+    """    
 
 
 
+    if (len(sys.argv)<2):
+    #   print("\n\tError, program needs two arguments to run\n" )
+    #   sys.exit(1)
+        input_file_arg="a_to_e_Example_net_Input_Files/a_Test_Circuit_1.net"
+    else:
+        input_file_arg=sys.argv[1]
+# now open file
 
-
-
-
-
-#print(impedences)
+    input_file=Path(input_file_arg)
+    if input_file.exists() and input_file.is_file(): 
+       processCascadeFile(input_file)
+    else:
+        print("Unable to find file")
