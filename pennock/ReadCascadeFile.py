@@ -1,9 +1,12 @@
 import math
+import matplotlib.pyplot as plt
 import numpy
 from   pathlib import Path
 import csv
 import sys
 import time
+import argparse
+import cmath
 
 
 class Circuit:
@@ -86,7 +89,7 @@ def ReadCascadeFile(inputFile):
         errorCodes.append("F003")
         returnStatus="NOTOK"
 
-    return returnDict
+    return returnDict,errorCodes
 
 def locateBlocks(cascadeList,blockName):
 
@@ -119,6 +122,18 @@ def getValueFromString(name,type,string):
         if (eq >-1):
             idx=eq+1
             valstring=new_str[idx:]
+
+            if name in "R,L,C,G":
+                valstring=valstring.replace(' ','')
+                valstring=valstring.replace('p','e-12')
+                valstring=valstring.replace('n','e-9')
+                valstring=valstring.replace('u','e-6')
+                valstring=valstring.replace('m','e-3')
+                valstring=valstring.replace('k','e3')
+                valstring=valstring.replace('M','e6')
+                valstring=valstring.replace('G','e9')
+                valstring=valstring.replace('T','e12')
+
             substring=valstring.split(' ')
             teststring=substring[0].strip() 
             if type == 'float':
@@ -144,7 +159,7 @@ def getValueFromString(name,type,string):
     return(rtn,error) 
             
 def getTerms(termBlock):
-    CascadeValue={"VT":None,"RS":None,"RL":None,"IN":None,"GS":None,"Fstart":None,"Fend":None,"Nfreqs":None}
+    CascadeValue={"VT":None,"RS":None,"RL":None,"IN":None,"GS":None,"Fstart":None,"Fend":None,"Nfreqs":None,"LFstart":None,"LFend":None}
     CascadeParameters=[
         {
             "name":"VT",
@@ -172,6 +187,14 @@ def getTerms(termBlock):
         },
         {
             "name":"Fend",
+            "type":"FLOAT"
+        },
+         {
+            "name":"LFstart",
+            "type":"FLOAT"
+        },
+        {
+            "name":"LFend",
             "type":"FLOAT"
         },
         {
@@ -235,19 +258,131 @@ def ABCDmatrix (circuitNodeCount,impedences):
 
     return abcd[-1] #return last element
 
+def getOutputBlock(cBlock):
+    
+    #cBlock=["Vin mV","Vin dBmV","Vout V","Vout dBV","Iin uA","Iin dBuA","Iout A","Iout mA","Iout dBmA","Pin W","Pin dBW","Zout Ohms","Zout mOhms","Pout W","Pout mW","Pout dBmW","Zin Ohms","Zin kOhms","Av  dB","Av dB","Ai dB"]
+    pos=0
+    scale=""
+    units=""
+    dbCalc=False
+
+    outputList=[]
+
+    for a in cBlock:
+        outputTerms=a.split(" ")
+
+        if len(outputTerms)==1:
+            outputTerms.append("")
+
+        if outputTerms[1].startswith("dB"):
+            dbCalc=True
+            units=outputTerms[1].removeprefix("dB")
+        else:
+            dbCalc=False
+            units=outputTerms[1]
+
+        if units[:1] in "p,n,u,m,k,M,G,T":
+            scale=units[:1]
+        else:
+            scale=""
+
+        if dbCalc:
+            label1=f"|{outputTerms[0]}|"
+            label2=f"/_{outputTerms[0]}"
+        else:
+            label1=f"Re({outputTerms[0]})"
+            label2=f"Im({outputTerms[0]})"
+
+        for item in getOutputDetails(pos,scale,units,dbCalc,outputTerms[0],label1,None):
+        #for item in getOutputDetails(pos,scale,units,dbCalc,outputTerms[0],label1,label2):
+            outputList.append(item)
+
+    i=1
+    for outputItem in outputList:
+        outputItem.update({"position":i})
+        i+=1
+
+
+    return outputList
+
+def getOutputDetails(pos,scale,units,dbCalc,name,label1,label2):
+    outputDict={}
+    extended=[]
+    outputDict.update({"position":pos,"name":name,"units":units,"scale":scale,"dbCalc":dbCalc,"label":label1})
+    extended.append(outputDict.copy())
+
+    if label2!=None:
+        outputDict.update({"position":pos+1,"name":name,"units":units,"scale":scale,"dbCalc":dbCalc,"label":label2})
+        extended.append(outputDict.copy())
+
+    return extended
+
+
 def getLogicalCascadeBlocks(cascadeInputFile):
 
-    aval=ReadCascadeFile(inputFile=cascadeInputFile.open(mode='r'))
+    aval,error=ReadCascadeFile(inputFile=cascadeInputFile.open(mode='r'))
 
-    ablock=locateBlocks(aval.get("cascadeFile"),"CIRCUIT")
-    bblock=locateBlocks(aval.get("cascadeFile"),"TERMS")
-    cblock=locateBlocks(aval.get("cascadeFile"),"OUTPUT")
-    theTerms=getTerms(bblock)
+    if len(error) == 0:
 
-    ablock.sort()
+        ablock=locateBlocks(aval.get("cascadeFile"),"CIRCUIT")
+        bblock=locateBlocks(aval.get("cascadeFile"),"TERMS")
+        cblock=locateBlocks(aval.get("cascadeFile"),"OUTPUT")
+    
+        theOutput=getOutputBlock(cblock)
+    
+        theTerms=getTerms(bblock)
+    
+        ablock.sort()
 
-    return ablock,cblock,theTerms
+        return ablock,theOutput,theTerms
 
+    else:
+        return None,None,None
+
+def getImpendenceByLogFrequency(ablock,theTerms):
+    Fstart = theTerms.get("LFstart")
+    Fend = theTerms.get("LFend")
+    Nfreqs = theTerms.get("Nfreqs")
+    y=Fend/Fstart
+    x=Nfreqs-1
+    b=y**(1/x)
+    a=Fend/(b**Nfreqs)
+    frequencies=[]
+
+    for i in range (1,int(Nfreqs)):
+        frequencies.append(a*(b**i)) 
+      
+
+    impedences = []
+    for fq in frequencies:
+        for node in ablock:
+            res = None
+            con = None
+            cap = None
+            ind = None
+            if 'R=' in node:
+                res,error = getValueFromString('R','float',node)
+            elif 'G=' in node:
+                con,error = getValueFromString('G','float',node)
+            elif 'L=' in node:
+                ind,error=getValueFromString('L','float',node)
+            elif 'C='in node:
+                cap,error=getValueFromString('C','float',node)
+            if error == None:
+                n1,nerror = getValueFromString('n1','int',node)
+                n2,nerror = getValueFromString('n2','int',node)
+                if nerror == None:
+                    x = Circuit(n1,n2,res,cap,ind,con,fq)
+                    impedences.append(x)
+                else:
+                    reportError(nerror,node)
+            else:
+                reportError(error,node)
+
+    return impedences
+"""
+Create a function to get the impedence by frequency with Log base 10 
+"""
 def getImpendenceByFrequency(ablock,theTerms):
 
     Fstart = theTerms.get("Fstart")
@@ -277,22 +412,42 @@ def getImpendenceByFrequency(ablock,theTerms):
                 if nerror == None:
                     x = Circuit(n1,n2,res,cap,ind,con,fq)
                     impedences.append(x)
+                else:
+                    reportError(nerror,node)
+            else:
+                reportError(error,node)
     
     return impedences
+
+def reportError(error,node):
+    print("ERROR: "+error+" in node "+node)
+    sys.exit()
 
 def getCascadeCalc(freq,theTerms,abcd):
     allCalcs={
         "Frequency":0,
-        "Vin":0,
-        "Vout":0,
-        "Iin":0,
-        "Iout":0,
-        "Pin":0,
-        "Pout":0,
-        "Zin":0,
-        "Zout":0,
-        "Av":0,
-        "Ai":0
+        "Vin":[0,0],
+        "Vout":[0,0],
+        "Iin":[0,0],
+        "Iout":[0,0],
+        "Pin":[0,0],
+        "Pout":[0,0],
+        "Zin":[0,0],
+        "Zout":[0,0],
+        "Av":[0,0],
+        "Ai":[0,0],
+        "Ap":[0,0],
+        "dBVin":[0,0],
+        "dBVout":[0,0],
+        "dBIin":[0,0],
+        "dBIout":[0,0],
+        "dBPin":[0,0],
+        "dBPout":[0,0],
+        "dBZin":[0,0],
+        "dBZout":[0,0],
+        "dBAv":[0,0],
+        "dBAi":[0,0],
+        "dBAp":[0,0]
     }
 
     allCalcs.update({"Frequency":freq})
@@ -312,64 +467,157 @@ def getCascadeCalc(freq,theTerms,abcd):
     Vin = (Zin/(Zin+RS))*VT
     Av = RL/((a*RL)+b)
     Ai = 1/((c*RL)+d)
+    Ap=Av*Ai
+
     Vout = Av*Vin
     Iout = Vout/RL
     Iin = Iout/Ai
-    Pin = Vin*Iout
-    Pout = Vout*Iin
+    Pin = Vin*Iin
+    Pout = Vout*Iout
+
+    dBVin=20*math.log(abs(Vin),10)
+    dBVout=20*math.log(abs(Vout),10)   
+    dBIin=20*math.log(abs(Iin),10) 
+    dBIout=20*math.log(abs(Iout),10) 
+    dBPin=10*math.log(abs(Pin),10) 
+    dBPout=10*math.log(abs(Pout),10)
+    dBZin=20*math.log(abs(Zin),10) 
+    dBZout=20*math.log(abs(Zout),10) 
+    dBAv=20*math.log(abs(Av),10) 
+    dBAi=20*math.log(abs(Ai),10) 
+    dBAp=10*math.log(abs(Ap),10) 
+
+    r,dBVinPhase=cmath.polar(Vin)
+    r,dBVoutPhase=cmath.polar(Vout) 
+    r,dBIinPhase=cmath.polar(Iin) 
+    r,dBIoutPhase=cmath.polar(Iout)
+    r,dBPinPhase=cmath.polar(Pin)
+    r,dBPoutPhase=cmath.polar(Pout)
+    r,dBZinPhase=cmath.polar(Zin)
+    r,dBZoutPhase=cmath.polar(Zout)
+    r,dBAvPhase=cmath.polar(Av)
+    r,dBAiPhase=cmath.polar(Ai)
+    r,dBApPhase=cmath.polar(Ap)
+
 
     #add imaginary values with real 
     #make all values the same length
 
     allCalcs.update({
-        "Vin":Vin.real,
-        "Vout":Vout.real,
-        "Iin":Iin.real,
-        "Iout":Iout.real,
-        "Pin":Pin.real,
-        "Pout":Pout.real,
-        "Zin":Zin.real,
-        "Zout":Zout.real,
-        "Av":Av.real,
-        "Ai":Ai.real
-    })    
+            "Vin":[Vin.real,Vin.imag],
+            "Vout":[Vout.real,Vout.imag],
+            "Iin":[Iin.real,Iin.imag],
+            "Iout":[Iout.real,Iout.imag],
+            "Pin":[Pin.real,Pin.imag],
+            "Pout":[Pout.real,Pout.imag],
+            "Zin":[Zin.real,Zin.imag],
+            "Zout":[Zout.real,Zout.imag],
+            "Av":[Av.real,Av.imag],
+            "Ai":[Ai.real,Ai.imag], 
+            "Ap":[Ap.real,Ap.imag],
+            "dBVin":[dBVin,dBVinPhase],
+            "dBVout":[dBVout,dBVoutPhase],
+            "dBIin":[dBIin,dBIinPhase],
+            "dBIout":[dBIout,dBIoutPhase],
+            "dBPin":[dBPin,dBPinPhase],
+            "dBPout":[dBPout,dBPoutPhase],
+            "dBZin":[dBZin,dBZinPhase],
+            "dBZout":[dBZout,dBZoutPhase],
+            "dBAv":[dBAv,dBAvPhase],
+            "dBAi":[dBAi,dBAiPhase],
+            "dBAp":[dBAp,dBApPhase]
+        })    
 
     return allCalcs
 
 def getUnitBasedValue(unit ,value): 
-    if unit==None:
+    if unit==None or unit=="":
         return value
-    
     if unit.startswith("k"):
-        value=value*1000
+        return value/1000
     if unit.startswith("p"):
-        value = value*10^-12
+        return value/10^-12
     if unit.startswith("n"):
-        value = value*10^-9
+        return value/10^-9
     if unit.startswith("u"):
-        value = value/1000000
+        return value*1000000
     if unit.startswith("m"):
-        value = value/1000
+        return value*1000
     if unit.startswith("M"):
-        value = value^10^6
+        return value/10^6
     if unit.startswith("G"):
-        value = value*10^9
-
-    return value
+        return value/10^9
 
 def writeCSV(cascadeOutput):
 
     hdr=list(cascadeOutput[0].keys())
+    hdr_line_1=[]
+    hdr_line_2=[]
+    for item in hdr:
+        hdr_parts=item.strip().split(' ')
+        if cascadeOutput[0][item]!=None:
+            hdr_line_1.append(hdr_parts[0])
+            if len(hdr_parts)>1:
+                hdr_line_2.append(hdr_parts[1])
+            else:
+                hdr_line_2.append("")
+        
+    with open(output_name, 'a') as output_to_file:
+        for hl1 in hdr_line_1:
+            h1=f"{hl1}, ".rjust(12," ")
+            output_to_file.write(h1)
 
-    with open('test.csv', 'a') as output_file:
-        dict_writer = csv.DictWriter(output_file, restval="-", fieldnames=hdr, delimiter=',')
-        dict_writer.writeheader()
-        dict_writer.writerows(cascadeOutput)
+        output_to_file.write("\n")
+
+        for hl2 in hdr_line_2:
+            h2=f"{hl2}, ".rjust(12," ")
+            output_to_file.write(h2)
+
+        output_to_file.write("\n")
+
+        for vals in cascadeOutput:
+            for valItem in hdr:
+                if vals[valItem]!=None:
+                    v=f"{vals[valItem]:1.3E}, ".rjust(12," ")
+                    output_to_file.write(v)
+
+            output_to_file.write("\n")
+
+def writeGraphData(graphData):
+    
+    for graph in graphsToCreate:
+        xList=[d["x"] for d in graphData if str(d['graph']) in graph["Column"]]
+        yList=[d["y"] for d in graphData if str(d['graph']) in graph["Column"]]
+        ylabel=[[d["y-label"],d['graphName']] for d in graphData if str(d['graph']) in graph["Column"]][0]
+
+        x=numpy.array(xList)
+        y=numpy.array(yList)
+        plt.ioff()
+    
+# Create a new figure, plot into it, then close it so it never gets displayed
+        plt.plot(x,y)
+        plt.title(ylabel[1])
+        plt.xlabel("Hz")
+        plt.ylabel(ylabel[0])
+
+        plt.savefig(graph["File"])
+        plt.close()
+
+
 
 
 def processCascadeFile(cascadeFile):
     ablock,cblock,theTerms=getLogicalCascadeBlocks(cascadeFile)
-    impendenceList=getImpendenceByFrequency(ablock,theTerms)
+    if ablock==None:
+        reportError("Error reading file",None)
+        return
+
+    graphData=[]
+    if theTerms.get("LFstart")==None:
+        impendenceList=getImpendenceByFrequency(ablock,theTerms)
+    else:
+        impendenceList=getImpendenceByLogFrequency(ablock,theTerms)
+
     circuitNodeCount=len(ablock)
     
     cascadeCalculated=[]
@@ -384,24 +632,41 @@ def processCascadeFile(cascadeFile):
 
         outputDict={}
         outputDict.update({"Frequency Hz":freq})
+
+        colPos=0
         for cblockItem in cblock:
 
-            outputItem=cblockItem.split(' ')
-            calcOutputItem=outputItem[0]
-
-            if len(outputItem)==1:
-                calcUnit=None
-            else:
-                calcUnit=outputItem[1]
+            calcOutputItem=cblockItem["name"]
+            calcUnit=cblockItem["units"]
+            calcScale=cblockItem["scale"]
 
             cascadeCalcItem = cascadeCalculated[-1]
-            if calcOutputItem in cascadeCalcItem:
-                outputDict.update({cblockItem: getUnitBasedValue(calcUnit,cascadeCalcItem.get(calcOutputItem))})
+            if cblockItem["dbCalc"]:
+                calcOutputItem=f"dB{calcOutputItem}"
+                label2=f"/_{calcOutputItem} Rads"
+                calcUnit=f"dB{calcUnit}"
+            else:
+                label2=f"Im({calcOutputItem}) {calcUnit}"
+
+            label1=f"{cblockItem['label']} {calcUnit}"
+
+            calcValue=cascadeCalcItem.get(calcOutputItem)            
+            
+            outputDict.update({label1:getUnitBasedValue(calcScale,calcValue[0]),label2:getUnitBasedValue(calcScale,calcValue[1])})
+            if str(colPos) in graphParams:
+                graphData.append({
+                    "graph":colPos,
+                    "graphName":label1,
+                    "y-label":calcUnit,
+                    "x":freq,
+                    "y":getUnitBasedValue(calcScale,calcValue[0])})
+
+            colPos+=1
+
         outputArray.append(outputDict)
 
-        #print(calcOutputItem)
-        #print(calcUnit)
     writeCSV(outputArray)
+    writeGraphData(graphData)
 
 if __name__ == '__main__':
 
@@ -412,18 +677,65 @@ if __name__ == '__main__':
     output file validity
     https://builtin.com/software-engineering-perspectives/python-pathlib
     """    
+    parser = argparse.ArgumentParser(
+                    prog=sys.argv[0],
+                    description='Analyses cascade circuits, where series and shunt impedances of any value can be connected in any order between a source and a load. The output file is named the same as the input file but with extension .csv',
+                    epilog='Boohoo')
+    
+    parser.add_argument('input_file',nargs='?',default=None)
+    parser.add_argument('output_file',nargs='?',default=None)
+    parser.add_argument('-i',required=False,default=None,metavar='a_Test_Circuit_1',help='Input file name should be without the .net extension')      
+    parser.add_argument('-p',required=False,default=None,metavar='[1,2,3]',help='Optional list of output columns e.g. [2,4,6]')
 
+    args = parser.parse_args()
+    graphParams=None
 
+    noPositionalParameters=False
 
-    if (len(sys.argv)<2):
-    #   print("\n\tError, program needs two arguments to run\n" )
-    #   sys.exit(1)
-        input_file_arg="a_to_e_Example_net_Input_Files/a_Test_Circuit_1.net"
+    if args.input_file==None or args.output_file==None:
+        noPositionalParameters=True
+    
+    if noPositionalParameters:
+        if args.i==None:
+            print("No input file name")
+            sys.exit(1)
+        if args.p==None:
+            print("No graph parameters")
+            sys.exit(1)
+        
+        fname=args.i.strip()
+        graphParams=args.p.strip().replace('[','').replace(']','').split(',')
+
     else:
-        input_file_arg=sys.argv[1]
+        fname=args.input_file
+        output_name=args.output_file 
+    
+    if not Path(fname).suffix==".net":
+        output_name=f"{fname}.csv"
+        fname=f"{fname}.net"
+    else:
+        output_name=Path(fname).with_suffix(".csv")
+        output_name=str(output_name)
+        
+
+    base_file_name=Path(fname).stem 
+
+    input_file_arg=fname
 # now open file
 
     input_file=Path(input_file_arg)
+    output_file=Path(output_name)
+
+    if output_file.exists() and output_file.is_file():
+        print("Output file exists")
+
+    graphsToCreate=[]
+    for graphCol in graphParams:
+        graphFile=Path(f"{base_file_name}_{graphCol}.png")
+        graphsToCreate.append({"Column":graphCol,"File":graphFile})
+        if graphFile.exists() and graphFile.is_file():
+            print(f"Graph file {str(graphFile)} exists")
+
     if input_file.exists() and input_file.is_file(): 
        processCascadeFile(input_file)
     else:
