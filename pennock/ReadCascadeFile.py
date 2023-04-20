@@ -349,7 +349,7 @@ def getImpendenceByLogFrequency(ablock,theTerms):
     a=Fend/(b**Nfreqs)
     frequencies=[]
 
-    for i in range (1,int(Nfreqs)):
+    for i in range (1,int((Nfreqs))+1):
         frequencies.append(a*(b**i)) 
       
 
