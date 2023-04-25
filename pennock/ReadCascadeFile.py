@@ -2,18 +2,40 @@ import math
 import matplotlib.pyplot as plt
 import numpy
 from   pathlib import Path
-import csv
+#import csv
 import sys
 import time
 import argparse
 import cmath
 
-
 class Circuit:
+    """
+    Class initialies the values of the B and C of the matrix for each node as 0; 
+    These are the values that will change depended on how the component is connected to the circuit
+     -   -
+    | A 0 |
+    | 0 D |
+     -   -
+    """
     bValue=0
     cValue=0
 
     def __init__(self,node1,node2,resistorValue,capacitanceValue,inductanceValue,conductorValue,frequency):
+
+        """
+        function establishes objects which are used in the imepedence calculations;
+        sends either B or C to be calculated depending on the whether the component is in series ie. n2 =/= 0 
+        or parallel where n2 = 0
+
+        param:  node1 - the nodes specified in the inputs
+        type:   int
+        param:  node2
+        type:   int
+    
+        ADD
+
+        """
+
         self.node1=node1
         self.node2=node2
         
@@ -35,6 +57,13 @@ class Circuit:
             self.bValue=self.calculate_Value()
 
     def calculate_Value(self):
+        """
+        Function calculates impedence values depending on the component used
+        Inductance and Capacitance requires the frequency input
+
+        ADD
+
+        """
         
         if self.resistorValue!=None:
             calcValue=self.resistorValue
@@ -49,6 +78,16 @@ class Circuit:
         return calcValue
 
 def ReadCascadeFile(inputFile):
+    """
+    Function reads the file
+    checks all blocks are there and returns if blocks missing 
+
+    param
+    type
+
+    ADD
+
+    """
     
     circuitCheck = 0
     termsCheck = 0
@@ -93,6 +132,18 @@ def ReadCascadeFile(inputFile):
 
 def locateBlocks(cascadeList,blockName):
 
+    """
+    Determines the position of the blocks in the input file
+    adds to new list 
+
+    param
+    type
+    param 
+    type
+
+    ADD
+    """
+
     block=[]
     startLine=-1
     endLine=-1
@@ -113,6 +164,9 @@ def locateBlocks(cascadeList,blockName):
     return block
 
 def getValueFromString(name,type,string):
+    """
+    
+    """
     nameFind = string.find(name)
     if nameFind >-1:
         lname = len(name)
@@ -136,6 +190,12 @@ def getValueFromString(name,type,string):
 
             substring=valstring.split(' ')
             teststring=substring[0].strip() 
+
+            """
+            possibly add error check component invalid here
+            ADD more detail to the errors in here already
+            ADD
+            """
             if type == 'float':
                 try:
                     rtn = float(teststring)
@@ -144,6 +204,10 @@ def getValueFromString(name,type,string):
                     rtn = None
                     error = "V001"
             elif type == 'int':
+                """
+                Does this actually work or does it int the float? 
+                ADD
+                """
                 try:
                     rtn = int(teststring)
                     error = None
@@ -159,6 +223,15 @@ def getValueFromString(name,type,string):
     return(rtn,error) 
             
 def getTerms(termBlock):
+    """
+    gets the different terms 
+
+    add error for missing terms that are required 
+
+    and when fstart not lfend 
+
+    ADD
+    """
     CascadeValue={"VT":None,"RS":None,"RL":None,"IN":None,"GS":None,"Fstart":None,"Fend":None,"Nfreqs":None,"LFstart":None,"LFend":None}
     CascadeParameters=[
         {
@@ -201,7 +274,6 @@ def getTerms(termBlock):
             "name":"Nfreqs",
             "type":"FLOAT"
         }
-
         ]
             
     for termLine in termBlock:
@@ -214,6 +286,10 @@ def getTerms(termBlock):
     return CascadeValue
 
 def ABCDmatrix (circuitNodeCount,impedences):
+    """
+    makes the matrices using the class
+    ADD
+    """
     abcd = []
     abcdCounter=0
     start=0
@@ -260,6 +336,11 @@ def ABCDmatrix (circuitNodeCount,impedences):
 
 def getOutputBlock(cBlock):
     
+    """
+    add
+
+    """
+
     #cBlock=["Vin mV","Vin dBmV","Vout V","Vout dBV","Iin uA","Iin dBuA","Iout A","Iout mA","Iout dBmA","Pin W","Pin dBW","Zout Ohms","Zout mOhms","Pout W","Pout mW","Pout dBmW","Zin Ohms","Zin kOhms","Av  dB","Av dB","Ai dB"]
     pos=0
     scale=""
@@ -332,7 +413,7 @@ def getLogicalCascadeBlocks(cascadeInputFile):
     
         theTerms=getTerms(bblock)
     
-        ablock.sort()
+        ablock.sort()   #sort the nodes in order for the matrix multiplication
 
         return ablock,theOutput,theTerms
 
@@ -561,27 +642,31 @@ def writeCSV(cascadeOutput):
                 hdr_line_2.append(hdr_parts[1])
             else:
                 hdr_line_2.append("")
-        
-    with open(output_name, 'a') as output_to_file:
-        for hl1 in hdr_line_1:
-            h1=f"{hl1}, ".rjust(12," ")
-            output_to_file.write(h1)
 
-        output_to_file.write("\n")
 
-        for hl2 in hdr_line_2:
-            h2=f"{hl2}, ".rjust(12," ")
-            output_to_file.write(h2)
-
-        output_to_file.write("\n")
-
-        for vals in cascadeOutput:
-            for valItem in hdr:
-                if vals[valItem]!=None:
-                    v=f"{vals[valItem]:1.3E}, ".rjust(12," ")
-                    output_to_file.write(v)
+    try:    
+        with open(output_name, 'a') as output_to_file:
+            for hl1 in hdr_line_1:
+                h1=f"{hl1}, ".rjust(12," ")
+                output_to_file.write(h1)
 
             output_to_file.write("\n")
+
+            for hl2 in hdr_line_2:
+                h2=f"{hl2}, ".rjust(12," ")
+                output_to_file.write(h2)
+
+            output_to_file.write("\n")
+
+            for vals in cascadeOutput:
+                for valItem in hdr:
+                    if vals[valItem]!=None:
+                        v=f"{vals[valItem]:1.3E}, ".rjust(12," ")
+                        output_to_file.write(v)
+
+                output_to_file.write("\n")
+    except PermissionError:
+        print("Output file already exists")
 
 def writeGraphData(graphData):
     
@@ -631,7 +716,7 @@ def processCascadeFile(cascadeFile):
         cascadeCalculated.append(getCascadeCalc(freq,theTerms,cascadeMatrixCalc))
 
         outputDict={}
-        outputDict.update({"Frequency Hz":freq})
+        outputDict.update({"Freq Hz":freq})
 
         colPos=0
         for cblockItem in cblock:
@@ -643,7 +728,7 @@ def processCascadeFile(cascadeFile):
             cascadeCalcItem = cascadeCalculated[-1]
             if cblockItem["dbCalc"]:
                 calcOutputItem=f"dB{calcOutputItem}"
-                label2=f"/_{calcOutputItem} Rads"
+                label2=f"/_{calcOutputItem} Rads".replace("dB","")
                 calcUnit=f"dB{calcUnit}"
             else:
                 label2=f"Im({calcOutputItem}) {calcUnit}"
