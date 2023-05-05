@@ -1,0 +1,5 @@
+Command is:python ReadCascadeFile.py ./User_files/a_Test_Circuit_1dB.net ./User_files/a_Test_Circuit_1dB.csv >./User_files/a_Test_Circuit_1dB_run.log 2>&1
+OS returns 0 from execution of command
+For files ./Model_files/a_Test_Circuit_1dB_model.csv and ./User_files/a_Test_Circuit_1dB.csv filecmp returns same=False
+			Detailed testing:
+Files have different number of lines, model has 12 lines, user has 36 lines

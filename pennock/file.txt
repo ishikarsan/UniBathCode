@@ -1,5 +1,0 @@
-Node1=1; Node2=2; Ctype=Res; Val=47.0
-Node1=0.2e+0; Node2=0; Ctype=Cap; Val=2.2e-6
-Node2=3; Node1=2; Ctype=Ind; Val=1.47e-6
-Ctype=Res; Node1=3; Val=2.2e+3; Node2=0
-Node1=1; Ctype=Res; Val=47.0

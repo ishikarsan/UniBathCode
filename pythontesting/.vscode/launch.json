@@ -1,0 +1,29 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+
+        {
+            "name": "Python: Autotest",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "args": ["ReadCascadeFile.py","1e-10","1e-13"],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        
+       
+        {
+                    "name": "Python: Cascade",
+                    "type": "python",
+                    "request": "launch",
+                    "program": "${file}",
+                    "args": ["./User_files/a_Test_Circuit_1.net","./User_files/a_Test_Circuit_1.csv",],
+                    "console": "integratedTerminal",
+                    "justMyCode": true
+        }
+    ]           
+}
